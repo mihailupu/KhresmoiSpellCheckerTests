@@ -145,7 +145,11 @@ public class KSpellTester {
             LOG.log(Level.INFO, "misspelled:" + termsToQuery(misspelledTerms));
             LOG.log(Level.INFO, "corrected:" + termsToQuery(correctedTerms));
             int editDistance = LevenshteinDistance.computeLevenshteinDistance(original, termsToString(correctedTerms));
-            csvWriter.writeRecord(new String[]{original , misspelled ,termsToString(correctedTerms) , Integer.toString(editDistance) , termsComparison(originalTerms, misspelledTerms, correctedTerms)});
+            int[] termNumbers = termsComparison(originalTerms, misspelledTerms, correctedTerms);
+            csvWriter.writeRecord(new String[]{original , misspelled ,
+                termsToString(correctedTerms) , Integer.toString(editDistance) ,
+                Integer.toString(termNumbers[0]) ,Integer.toString(termNumbers[1]) ,
+                Integer.toString(termNumbers[2])});
             
             LOG.log(Level.INFO, "About to runMIMIRretrieval.......");
 
@@ -222,10 +226,10 @@ public class KSpellTester {
      * @return A csv string with three integers representing
      * correctedTerms,notCorrectedTerms,misCorrectedTerms;
      */
-    public String termsComparison(ArrayList<Term> correct, ArrayList<Term> misspelled, ArrayList<Term> corrected) {
+    public int[] termsComparison(ArrayList<Term> correct, ArrayList<Term> misspelled, ArrayList<Term> corrected) {
         // if the misspelled is a different size compared to the original, i can no longer count terms
         if (correct.size() != misspelled.size()) {
-            return "NaN,NaN,NaN";
+            return new int[]{Integer.MIN_VALUE,Integer.MIN_VALUE,Integer.MIN_VALUE};
         }
         int correctedTerms = 0;
         int miscorrectedTerms = 0;
@@ -245,7 +249,7 @@ public class KSpellTester {
                 }
             }
         }
-        return correctedTerms + "," + notCorrectedTerms + "," + miscorrectedTerms;
+        return new int[]{correctedTerms , notCorrectedTerms , miscorrectedTerms};
     }
 
     public String termsToString(ArrayList<Term> terms) {
