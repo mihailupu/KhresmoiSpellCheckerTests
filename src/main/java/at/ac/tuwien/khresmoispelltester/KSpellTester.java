@@ -42,6 +42,7 @@ public class KSpellTester {
     Properties properties = new Properties();
     CsvReader csvReader;
     CsvWriter csvWriter;
+    boolean doRetrieval = true;
 
     public static void main(String[] args) {
         if (args.length != 1) {
@@ -67,6 +68,7 @@ public class KSpellTester {
 
         String queriesFilePath = properties.getProperty("queriesFilePath");
         String spellCheckerName = properties.getProperty("spellCheckerName");
+        doRetrieval = Boolean.parseBoolean(properties.getProperty("doRetrieval"));
         if (queriesFilePath == null || spellCheckerName == null) {
             LOG.log(Level.SEVERE, "Missing one of essential properties: queriesFilePath or spellCheckerName");
             throw new RuntimeException("Invalid or incomplete properties file");
@@ -94,9 +96,9 @@ public class KSpellTester {
                 throw new RuntimeException("Invalid or incomplete properties file");
             }
             sc = new HunSpellChecker(hunspellDictionary);
-        } else if (spellCheckerName.equalsIgnoreCase("hon")){            
+        } else if (spellCheckerName.equalsIgnoreCase("hon")) {
             sc = new HONSpellChecker();
-        }else{
+        } else {
             //default spell checkers is dummy
             sc = new DummySpellChecker();
         }
@@ -111,7 +113,7 @@ public class KSpellTester {
         //BufferedReader br = new BufferedReader(new FileReader(queriesFilePath));
         csvReader = new CsvReader(new FileReader(queriesFilePath), ',');
         //BufferedWriter bw = new BufferedWriter(new FileWriter(queriesFilePath + ".output"));
-        csvWriter = new CsvWriter(new FileWriter(queriesFilePath + ".output"),',');
+        csvWriter = new CsvWriter(new FileWriter(queriesFilePath + ".output.csv"), ',');
 
         String line;
         Class.forName("org.sqlite.JDBC");
@@ -121,6 +123,10 @@ public class KSpellTester {
         stat.execute(sql);
         runMIMIRretrievalExp rmr = new runMIMIRretrievalExp(queryType, sc.getName(), queriesTableName, 100);
         csvReader.readHeaders();
+        int[] sumTermNumbers = new int[]{0,0,0};
+        int sumEditDistances=0;
+        int counter=0;
+        int diffNumTermsCounter=0;
         while (csvReader.readRecord()) {
             String qid = csvReader.get("Query_number");
             String original = csvReader.get("Text_query_in_English_with_correct_spelling");
@@ -146,64 +152,79 @@ public class KSpellTester {
             LOG.log(Level.INFO, "corrected:" + termsToQuery(correctedTerms));
             int editDistance = LevenshteinDistance.computeLevenshteinDistance(original, termsToString(correctedTerms));
             int[] termNumbers = termsComparison(originalTerms, misspelledTerms, correctedTerms);
-            csvWriter.writeRecord(new String[]{original , misspelled ,
-                termsToString(correctedTerms) , Integer.toString(editDistance) ,
-                Integer.toString(termNumbers[0]) ,Integer.toString(termNumbers[1]) ,
-                Integer.toString(termNumbers[2])});
             
+            csvWriter.writeRecord(new String[]{original, misspelled,
+                termsToString(correctedTerms), Integer.toString(editDistance),
+                Integer.toString(termNumbers[0]), Integer.toString(termNumbers[1]),
+                Integer.toString(termNumbers[2])});
+            if (termNumbers[0]>=0){
+                counter++;
+                sumTermNumbers[0]+=termNumbers[0];
+                sumTermNumbers[1]+=termNumbers[1];
+                sumTermNumbers[2]+=termNumbers[2];
+            }else{
+                diffNumTermsCounter++;
+            }
+            sumEditDistances+=editDistance;
+
             LOG.log(Level.INFO, "About to runMIMIRretrieval.......");
 
             String queryterms = termsToQuery(correctedTerms);
             /* mihai,2014-08-13: i'm removing some special characters which make MIMIR cry */
-            queryterms=queryterms.replace("-", " "); //e.g. diabetes-aware changes to "diabetes aware" as a phrase, meaning the same thing
-            queryterms=queryterms.replace("+"," "); //e.g. + appears once in the queries, perhaps the user meant AND...
-            
+            queryterms = queryterms.replace("-", " "); //e.g. diabetes-aware changes to "diabetes aware" as a phrase, meaning the same thing
+            queryterms = queryterms.replace("+", " "); //e.g. + appears once in the queries, perhaps the user meant AND...
+
             queryterms = java.net.URLEncoder.encode(queryterms, "ISO-8859-1");
-            
 
-            String queryURL0 = mimirURL + queryterms;
-            LOG.log(Level.INFO, "queryURL = {0}", queryURL0);
-            ExtractText et0 = new ExtractText();
-            String text0 = et0.extractText(queryURL0, false);
-            LOG.log(Level.INFO, "text0 is:: {0}", text0);
+            if (doRetrieval) {
+                String queryURL0 = mimirURL + queryterms;
+                LOG.log(Level.INFO, "queryURL = {0}", queryURL0);
+                ExtractText et0 = new ExtractText();
+                String text0 = et0.extractText(queryURL0, false);
+                LOG.log(Level.INFO, "text0 is:: {0}", text0);
 
-            String queryID = text0.replace("SUCCESS ", "");
-            queryID = queryID.trim();
+                String queryID = text0.replace("SUCCESS ", "");
+                queryID = queryID.trim();
 
-            String SQL1 = "DELETE FROM IR" + queryType + sc.getName() + queriesTableName + " where queryNum=?;";
-            PreparedStatement pstmt1 = con.prepareStatement(SQL1); 
-            pstmt1.setInt(1, Integer.parseInt(qid));
-            pstmt1.executeUpdate();
-            LOG.log(Level.INFO, "Deleted all previous entries for this query number");
+                String SQL1 = "DELETE FROM IR" + queryType + sc.getName() + queriesTableName + " where queryNum=?;";
+                PreparedStatement pstmt1 = con.prepareStatement(SQL1);
+                pstmt1.setInt(1, Integer.parseInt(qid));
+                pstmt1.executeUpdate();
+                LOG.log(Level.INFO, "Deleted all previous entries for this query number");
 
-            if (!queryID.equals("")) {
-                //get results from MIMIR:
-                ArrayList<HitsObj> results;
-                try{
-                 results = rmr.getResultsFromMIMIR(queryID, "");//the second parameter is actually not used in this method
-                }catch (java.lang.NumberFormatException nfe){
-                    LOG.log(Level.WARNING, "problems with the query",nfe);
-                    results=new ArrayList<>();
+                if (!queryID.equals("")) {
+                    //get results from MIMIR:
+                    ArrayList<HitsObj> results;
+                    try {
+                        results = rmr.getResultsFromMIMIR(queryID, "");//the second parameter is actually not used in this method
+                    } catch (java.lang.NumberFormatException nfe) {
+                        LOG.log(Level.WARNING, "problems with the query", nfe);
+                        results = new ArrayList<>();
+                    }
+
+                    for (HitsObj result : results) {
+
+                        //sqllite server:
+                        String SQL2 = "INSERT INTO IR" + queryType + sc.getName() + queriesTableName + "(queryNum, item_id, relevanceScore, url) VALUES(?, ?, ?, ?);";
+
+                        PreparedStatement pstmt2 = con.prepareStatement(SQL2);
+                        pstmt2.setString(1, qid);
+                        pstmt2.setString(2, result.getId());
+                        pstmt2.setDouble(3, result.getScore());
+                        pstmt2.setString(4, result.getTitle());  //this is the URL
+
+                        pstmt2.executeUpdate();
+                    }
+
+                } else {
+                    LOG.log(Level.INFO, "Skipping -- no results for this query");
                 }
-
-                for (HitsObj result : results) {
-
-                    //sqllite server:
-                    String SQL2 = "INSERT INTO IR" + queryType + sc.getName() + queriesTableName + "(queryNum, item_id, relevanceScore, url) VALUES(?, ?, ?, ?);";
-
-                    PreparedStatement pstmt2 = con.prepareStatement(SQL2); 
-                    pstmt2.setString(1, qid);
-                    pstmt2.setString(2, result.getId());
-                    pstmt2.setDouble(3, result.getScore());
-                    pstmt2.setString(4, result.getTitle());  //this is the URL
-
-                    pstmt2.executeUpdate();
-                }
-
-            } else {
-                LOG.log(Level.INFO, "Skipping -- no results for this query");
             }
         }
+        csvWriter.writeRecord(new String[]{"average", queriesFilePath,
+                "average", Double.toString((double)sumEditDistances/(double)(counter+diffNumTermsCounter)),
+                Double.toString(sumTermNumbers[0]/(double)counter), Double.toString(sumTermNumbers[1]/(double)counter),
+                Double.toString(sumTermNumbers[2]/(double)counter)});
         csvWriter.close();
         csvReader.close();
     }
@@ -229,7 +250,7 @@ public class KSpellTester {
     public int[] termsComparison(ArrayList<Term> correct, ArrayList<Term> misspelled, ArrayList<Term> corrected) {
         // if the misspelled is a different size compared to the original, i can no longer count terms
         if (correct.size() != misspelled.size()) {
-            return new int[]{Integer.MIN_VALUE,Integer.MIN_VALUE,Integer.MIN_VALUE};
+            return new int[]{Integer.MIN_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE};
         }
         int correctedTerms = 0;
         int miscorrectedTerms = 0;
@@ -249,7 +270,7 @@ public class KSpellTester {
                 }
             }
         }
-        return new int[]{correctedTerms , notCorrectedTerms , miscorrectedTerms};
+        return new int[]{correctedTerms, notCorrectedTerms, miscorrectedTerms};
     }
 
     public String termsToString(ArrayList<Term> terms) {
