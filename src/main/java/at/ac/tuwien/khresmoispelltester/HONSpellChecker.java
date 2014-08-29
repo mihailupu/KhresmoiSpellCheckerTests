@@ -26,7 +26,7 @@ public class HONSpellChecker implements SpellChecker {
     public String spellCheck(String term, String language) throws IOException {
 // language, number of suggestions to return, input string
         SpellcheckResponse spellcheckResponse
-                = SpellcheckRequester.getSpellcheckResponse(SpellcheckDictionary.English, 1, term);
+                = SpellcheckRequester.getSpellcheckResponse(SpellcheckDictionary.English, 25, term);
 
         List<Suggestion> suggestions = spellcheckResponse.getSpellcheck().getSuggestions();
 
@@ -34,7 +34,11 @@ public class HONSpellChecker implements SpellChecker {
             LOG.log(Level.WARNING, "No suggestions found for " + term);
             return term;
         }
-        return suggestions.get(0).getSuggestedCorrections().get(0).getWord();
+        if (suggestions.get(0).getSuggestedCorrections().get(0).getFreq()/suggestions.get(0).getOrigFreq()>=8){
+            return suggestions.get(0).getSuggestedCorrections().get(0).getWord();
+        }else{
+            return term;
+        }
     }
 
     @Override
