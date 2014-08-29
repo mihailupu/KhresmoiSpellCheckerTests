@@ -15,23 +15,30 @@ import org.healthonnet.spellchecker.client.data.SpellcheckResponse;
 import org.healthonnet.spellchecker.client.data.Suggestion;
 
 /**
- *
+ * Same as HONSpellChecker, but with a frequency filter
  * @author mihailupu
  */
-public class HONSpellChecker implements SpellChecker {
+public class HON8SpellChecker implements SpellChecker {
 
-    private static final Logger LOG = Logger.getLogger(HONSpellChecker.class.getName());
+    private static final Logger LOG = Logger.getLogger(HON8SpellChecker.class.getName());
 
     @Override
     public String spellCheck(String term, String language) throws IOException {
 // language, number of suggestions to return, input string
         SpellcheckResponse spellcheckResponse
-                = SpellcheckRequester.getSpellcheckResponse(SpellcheckDictionary.English, 1, term);
+                = SpellcheckRequester.getSpellcheckResponse(SpellcheckDictionary.English, 25, term);
 
         List<Suggestion> suggestions = spellcheckResponse.getSpellcheck().getSuggestions();
 
-        return suggestions.get(0).getSuggestedCorrections().get(0).getWord();
-
+        if (suggestions.isEmpty()) {
+            LOG.log(Level.WARNING, "No suggestions found for " + term);
+            return term;
+        }
+        if (suggestions.get(0).getSuggestedCorrections().get(0).getFreq()/suggestions.get(0).getOrigFreq()>=8){
+            return suggestions.get(0).getSuggestedCorrections().get(0).getWord();
+        }else{
+            return term;
+        }
     }
 
     @Override
