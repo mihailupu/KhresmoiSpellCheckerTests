@@ -43,7 +43,7 @@ public class HON8SpellChecker implements SpellChecker {
 
     @Override
     public String getName() {
-        return "HONspellChecker";
+        return "HON8spellChecker";
     }
 
 }
