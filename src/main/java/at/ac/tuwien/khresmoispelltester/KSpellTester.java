@@ -98,6 +98,8 @@ public class KSpellTester {
             sc = new HunSpellChecker(hunspellDictionary);
         } else if (spellCheckerName.equalsIgnoreCase("hon")) {
             sc = new HONSpellChecker();
+        } else if (spellCheckerName.equalsIgnoreCase("hon8")) {
+            sc = new HON8SpellChecker();
         } else {
             //default spell checkers is dummy
             sc = new DummySpellChecker();
